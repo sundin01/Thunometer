@@ -1,0 +1,427 @@
+---
+title: "Thunometer"
+author: "Patrick Bigler"
+date: "2024-07-05"
+output: html_document
+---
+
+# Introduction
+
+Climate change, influenced by human activities, is likely to increase the frequency, intensity, and length of heatwaves, as discussed in studies like (IPCC, 2023). In urban settings, this effect is intensified by the urban heat island (UHI) phenomenon, which results in higher temperatures in city areas than in surrounding rural regions, as explored in works like @oke2017. This discrepancy is particularly pronounced at night due to reduced long-wave radiation emission and altered heat fluxes in urban areas [@burger2021; @gubler2021]. Consequently, urban residents face significant thermal stress from the UHI effect [@burger2021; @wicki2018]. With over 75% of the Central European population residing in urban zones, this escalating trend is a major climatic concern for these inhabitants. Therefore, examining the spatial variability of temperatures in urban areas is essential for developing adaptation strategies to mitigate impacts on public health and the environment [@burger2021].
+
+In order to accurately monitor temperature variations in climatically diverse urban areas, there is a need for high-resolution measurement networks. The scarcity of automated weather stations (AWS) due to their high cost poses a challenge in this regard. Addressing this issue, @gubler2021 introduced a novel, cost-effective type of measurement devices (Low Coast Devices, LCDs). These devices comprise a temperature logger and a specially designed, naturally ventilated radiation shield. In 2018, 79 of these LCDs were deployed across Bern, Switzerland [@gubler2021]. The research found that, compared to the AWS reference station, the LCDs tended to overestimate the average hourly temperatures during the day (06:00 -- 22:00) by 0.61°C to 0.93°C. At night (22:00 -- 06:00), the discrepancies were significantly smaller, ranging from -0.12°C to 0.23°C. The study not only focused on the temperature readings from the LCDs and their variance from AWS data but also mapped the temperature distribution across the suburban areas of Bern, providing a comprehensive overview [@gubler2021].
+
+In spring 2023, N. Tinner generated a map of the current LCDs temperature in the city of Bern based on the study of @burger2021. Here, a spatial upscaling from single measurement points of temperature is performed for a night mean based on spatial predictors and meteorology, which are known causes for the UHI [@oke2017]. N. Tinner implemented an approach where the upscaling is performed on real time data. The approach used is a classic multivariate linear regression model. As the model only knows the current temperature distribution, its scope and statistical power are limited. But because both @burger2021 and @gubler2021 showed that the city of Bern is affected by the urban heat island effect it is crucial to know more about it. Therefore @burger2021 modelled the nighttime mean UHI effect. The fact that the first real time map of N.Tinner is very limited in its statistical power and @burger2021 only modeled nighttime mean motivated us to investigate the urban heat island using machine learning techniques which eventually ended in the [Bernometer](www.bernometer.ch).
+
+In Spring 2024, Noémie Wellinger installed a new temperature network in the city of Thun, Switzerland using the same approach as the temperature network in Bern. This workflow presents a first draft of the Thunometer.
+
+# Data and Methodology
+
+In this section, we introduce you to the data used and the methodology. First, we present the data employed in our study. Second, we delve into the methodology, starting with the processing of the geospatial layers. Moreover, we give an explanation of how we determined which variables to use. To address our research questions, we implemented different modes to run this workflow. We provide an overview about those modes and guide you through. At last, we explain how we implemented the models.
+
+## Data^WP1^
+
+To avoid misunderstanding we want to start with a brief clarification: This project uses cantonal land use data and federal geospatial data. These in their raw form are called predictor classes. These are then spatially averaged to obtain the actual predictors which are called geospatial layers or just predictors.
+
+Temperature data for the years 2019-2022 from the network of the city of Bern is used. This is a numerical data set of the 3m temperature in 104 locations, with a temporal resolution of 10 minutes for all LCDs. How many LCD are active depends on the year but 55 LCDs are active over the entire time period (see table 1). The network data is publicly available on BORIS, however since data on BORIS is faulty at the moment we uploaded the corrected .csv-files to the Github repository. The original files can be found [here](https://boris.unibe.ch/161882/), as well as the metadata containing the logger location. We use additional data from the MeteoSchweiz AWS at Zollikofen, as it is the official meteorologic station of Bern. The five meteorological variables (2m temperature, precipitation, radiation, wind direction and wind speed) with a temporal resolution of 10 minutes for the years 2019-2022 will be used as well as the timestamp. Data of temperature (average) and precipitation (sum) of the previous six and twelve hours, and one, three and five days (and additionally ten days for precipitation) will also be fed into the model. This data is uploaded to the repository to ensure availability since the IDAWEB-data service is open for scientific use but not completely open access. To show small scale urban patterns of temperature distributions, zonally meaned geospatial data as shown in [\@burger2021](mailto:in@burger2021){.email} is used. These are cantonal land use classes as well as federal geospatial data. All of the data is spatially averaged to obtain the layers most effective as shown in @burger2021 as well as with our own distances (Table 1). The federal data (meteorologic values from the AWS at Zollikofen, digital elevation model (DEM), and vegetation height (VH)) and cantonal data (all land cover classes: land cover (LC), different open spaces (OS) and building heights (BH)) is directly downloaded from the web into R and then used as predictor classes. The geospatial layers roughness (ROU), flow accumulation (FLAC), aspect (ASP) and slop (SLO) are calculated based on these data sets and are then used as predictor classes. Table 1 provides a brief overview of the data we use.
+
+| Predictor class                                                                          | Variable Type    | Resolution / zonal mean [used resolutions / zonal means]          |
+|-------------------------------|------------------|------------------------|
+| 2m Temperature [°C], for the time period 15th May 2024 - 2th July 2024 (at Thun)         | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| Precipitation [mm], for the time period 15th May 2024 - 2th July 2024 (at Thun)          | Meteorological   | 15 minutes / [1h mean, 6, 12, 24, 72, 120, 240 hours rolling sum] |
+| Radiation [$W*m^{-2}$], for the time period 15th May 2024 - 2th July 2024 (at Thun)      | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| Windspeed [$m*s^{-1}$], for the time period 15th May 2024 - 2th July 2024 (at Thun)      | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| Winddirection [degree], for the time period 15th May 2024 - 2th July 2024 (at Thun)      | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| Air pressure [hPa], for the time period 15th May 2024 - 2th July 2024 (at Thun)          | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| relative humidity [%], for the time period 15th May 2024 - 2th July 2024 (at Thun)       | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
+| Land Cover Building [LC_B]                                                               | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Open Space Forest [OS_FO]                                                                | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Open Space Garden [OS_GA]                                                                | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Open Space Sealed [OS_SE]                                                                | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Open Space Agriculture [OS_AC]                                                           | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Open Space Water [OS_WA]                                                                 | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Vegetation Height [VH]                                                                   | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Mean Building Heights [BH]                                                               | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Slope [SLO]                                                                              | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Digital Elevation Model (DEM)                                                            | Geospatial Layer | No zonal mean                                                     |
+| Aspect [ASP]                                                                             | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Flow accumulation [FLAC]                                                                 | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Roughness [ROU]                                                                          | Geospatial Layer | 25m / 150m / 1000m                                                |
+| Climate Network in °C (39 LCDs, different sides) between 15th May 2024 and 2th July 2024 | Meteorological   | 10 minutes                                                        |
+
+: **Table 1:** Brief overview of the data used.
+
+## Methodology: Main Goal/Structure
+
+As mentioned earlier, the methodology section is subdivided into preparation and modeling. Our objective is to predict the temperature anomaly from the on-site location to the official measurement station in Zollikofen, and thus, the Urban Heat Island (UHI). Therefore, the target variable is the temperature (of the LCDs in the city of Bern). The predictor variables consist of a combination of the meteorological variables and geospatial layers as mention before (see table 1). This section provides information about the methodology.
+
+### Methodology: Preparation^WP1^
+
+In this initial methodology section, we conduct all preparations for modeling. It provides information about the generation of geospatial layers. Furthermore, we explain how we decide which variables to use for prediction and what options you have to generate the base-file 'Combined.csv'.
+
+#### Geospatial layers
+
+Either the geospatial layers are downloaded directly from a remote repository (dropbox account), which is the case when knitting (default). Alternatively, the geospatial layers are generated by downloading and processing of the geospatial layers as raw data from open sources. First, the files are downloaded from either cantonal or federal swiss websites. Then, the processing goes as follows:
+
+1)  The predictor classes layers are formatted to be separate files. This means that for each land use class as defined by [\@burger2021](mailto:by@burger2021){.email} and for each geospatial layer from Swisstopo there is a raster file which is the predictor class.
+
+2)  Then spatial extent and resolution are all standardized to 5 meters and the extent of the city and the surrounding lands.
+
+3)  Each layer then is zonally averaged. This can be performed with the layer resolutions by @burger2021 which corresponds to one predictor per predictor class in table 1. Alternatively, the geospatial layers are all meaned by the resolutions in table 1 (3 mean layers per predictor class). Finally, this results in three (or one in case of [\@burger2021](mailto:of@burger2021){.email}) geospatial layers per predictor class. The data of the predictor classes which corresponds to the raw layers can be found in the data-raw subfolder of this project for the land use classes. The processed files can be found in the data folder in the subdirectory Tiffs. We were not able to generate all layers from @burger2021 as they were generated in a GIS. For the sky view factor an alternative was chosen (ROU) but some layers were not replaced such as "AMT": amount of trees.
+
+#### Variable Selection
+
+After processing the geospatial layers, a variable selection was performed (see [variable selection](Markdown::%20Variable_Selection.rmd)). This process was only exclusively applied to the predictors listed in table 1, as layers by @burger2021 were already reduced and selected. The variable selection using the Boruta-algorithm revealed that, after removing variables for reasons unrelated to relevance (see table 2), all remaining variables proved to be relevant. While further variable selection was investigated, no definitive conclusions were reached. Therefore, all generated predictors are utilized. Table 2 provides a brief overview of why certain variables were rejected. Based on this selection, a formula is now generated, which is processed into a recipe. This is now the basis for creating the models.
+
+|                                       |                                                                                                                                                                              |
+|-------------------|-----------------------------------------------------|
+| **Variable which is not a predictor** | **Reason**                                                                                                                                                                   |
+| Log_Nr and name                       | Does not make sens for spatial upscaling                                                                                                                                     |
+| temperature                           | It is the target variable                                                                                                                                                    |
+| timestamp, year, month, day and hour  | Because it is controversial whether time and date should be used as predictors. The model could simply learn the mean of specific timestamps and not the underlying pattern. |
+| NORD_CHTOP, OST_CHTOP                 | Coordinates are not used because the model should learn the underlying pattern.                                                                                              |
+| LV_03_E, LV_03_N                      | Coordinates are not used because the model should learn the underlying pattern.                                                                                              |
+
+: **TABLE 2:** Overview about the reasons why a variable were rejected as a predictor.
+
+#### Data Combination
+
+Now, that we have identified the variables to use, ensuring that the models contain the right information is crucial for model training. As briefly outlined in table 2, we decided against utilizing the timestamp due to its controversial relevance. However, considering that past meteorological conditions can influence the future, we applied various aggregations to the data from MeteoSwiss for the meteostation. Specifically, we averaged the 10-minute resolution to 1-hour intervals for the variables: radiation, wind speed, wind direction, 2m temperature, and precipitation (summed). Following this, rolling means/sums were calculated for 6, 12, 24 hours, 3 days, and 5 days for both precipitation and temperature. Additionally, a 10-day rolling sum was computed for precipitation to comprehensively capture moisture. This processed data represents the MeteoSwiss meteorological data set.
+
+Subsequently, data from the LCD temperature loggers in the city were read in and combined with the metadata. The result is a tidy data frame where each row corresponds to a measurement of a single logger at a specific point in time, with attributes such as location as columns (from the metadata). Afterward, the values corresponding to each location of the loggers were extracted from the geospatial predictors, and this data was added to the data frame. The outcome is the file 'Combined.csv,' which serves as the basis for this study.
+
+# Start Coding
+
+## Preparations
+
+Install and load all packages you need to run this workflow
+
+```{r Install and Load Packages, message=FALSE, warning=FALSE}
+# Packages you need for the Thunometer
+packages <- c('influxdbclient', 'ggplot2', 'tidyverse', 'lubridate', 'dplyr', 'caret',
+              'vip', 'parsnip', 'workflows', 'tune', 'dials', 'stringr', 'terra', 'stars',
+              'sf', 'plyr', 'doParallel', 'foreach', 'terrainr', 'starsExtra', 'pdp',
+              'recipes', 'tidyterra', 'shiny', 'xgboost', 'rnaturalearth', 'zoo',
+              'moments', 'tibble', 'rsample', 'yardstick', 'cowplot', 'purrr', 'renv',
+              'ranger','Boruta','devtools','sp','keras','tensorflow', 'glmnet', 'leaflet',
+              'MASS')
+
+# Load the function
+source('../R/load_packages.R')
+
+# Function call
+load_packages(packages)
+```
+
+## Download and Read all Data needed
+
+You need a lot of data. Here, you read the data step by step...
+
+### Download Logger Data of Thun
+
+First, we download the logger data of Thun
+
+```{r}
+
+folder_path <- '../data/Thun/'
+
+if((length(list.files(folder_path)) == 0)){
+  source('../R/logger_data/Logger_Data.R')
+  Logger_data(city = 'thun', date_start = '2024-05-15', date_end = '2024-07-02', 
+            write_csv = T, interpolate = 0, type = "temperature")
+  logger_data <- read_csv('../data/Thun/Logger_data_T_2024-05-15_2024-07-02.csv',
+                        show_col_types = F)
+}else{logger_data <- read_csv('../data/Thun/Logger_data_T_2024-05-15_2024-07-02.csv',
+                        show_col_types = F)}
+```
+
+### Read MeteoSchweiz Station Data of Thun
+
+```{r}
+# Read Meteo Schweiz data from thun using IDAWEB order
+meteo_schweiz <- read_csv2('../data/Meteo_Schweiz/order_123870_data.txt', show_col_types = F)
+```
+
+### Generate Geospatial Layers
+
+```{r include=FALSE}
+
+folder_path <- '../data/Tiffs/'
+file_path <- '../data/Combined.csv'
+generate_tiff <- F
+
+if(generate_tiff == F){
+  if((length(list.files(folder_path)) == 0)){
+      print('There are no tifs found --> download in progress')}
+  if(!file.exists(file_path)){
+      print('There is no file called combined.csv --> generation in progress')
+      source('../R/data_combination.R')
+      combined <- read_csv('../data/Combined.csv', show_col_types = F)}
+}else{source('../R/raw_tif_processing_2.R')
+    
+  }
+
+if(!file.exists(file_path)){
+  if((length(list.files(folder_path)) == 0)){
+  print('There are no tifs found --> processing in progress')
+  
+  
+  
+  }else{print('Tifs already exists --> reading tifs')
+    source('../../Thunometer/R/data_combination.R')
+    data_combination()
+    combined <- read_csv('../data/Combined.csv')
+  }}else{combined <- read_csv('../data/Combined.csv', show_col_types = F)}
+
+```
+
+## Active vs. Inactive Loggers
+
+```{r}
+# Load the script to show where the active and where the inactive loggers are...
+source('../R/active_vs_inactive.R')
+```
+
+## Preparation for Modelling
+
+### Generate Data set
+
+```{r}
+
+combined <- combined |>
+  select_if(is.numeric) |>
+  # calculate the temperature anomaly
+  mutate(temp_anomaly = temperature-temp)|>
+  dplyr::select(-c(hour, day, month, year, Log_Nr, NORD_CHTOPO, OST_CHTOPO,
+                   LV_03_N, LV_03_E, Quali))|>
+  drop_na()
+```
+
+### Create a Model Recipe
+
+```{r}
+
+# Take all column-names you need as predictors from the combined file
+predictors <- combined |>
+  colnames()
+
+# Define a formula in the following format: target ~ predictor_1 + ... + predictor_n
+formula_local <- as.formula(paste("temp_anomaly","~", paste(predictors,collapse  = "+")))
+
+# Make a recipe which can be used for the lm, KNN, and Random Forest model
+pp <- recipes::recipe(formula_local,
+                      data = combined) |>
+  # Yeo-Johnsen transformation (includes Box Cox and an extansion. Now it can handle x ≤ 0)
+  recipes::step_YeoJohnson(all_numeric(), -all_outcomes()) |>
+  # subsracting the mean from each observation/measurement
+  recipes::step_center(recipes::all_numeric(), -recipes::all_outcomes()) |>
+  # transforming numeric variables to a similar scale
+  recipes::step_scale(recipes::all_numeric(), -recipes::all_outcomes())
+```
+
+### Split the Data
+
+```{r}
+
+set.seed(123)  
+# Split 70 % to 30 % 
+split <- rsample::initial_split(combined, prop = 0.8, strata = NULL)
+
+# Split the data in a training set
+combined_train <- rsample::training(split)
+# And a test set
+combined_test <- rsample::testing(split)
+```
+
+## Models
+
+First, all models are AIC optimized. Second, KNN has "k" as a hyperparamter and can be tuned within the model function. The random forest model
+
+### Linear Regression
+
+```{r include=FALSE}
+# Load LM script
+source('../R/lm_model.R')
+# Function call
+lm_model <- LM_Model(pp, combined, combined_train)
+```
+
+### ML 1: KNN
+
+```{r eval=FALSE, include=FALSE}
+# Load KNN script
+source('../R/knn_model.R')
+# Function call
+knn_model <- KNN_Model(pp, combined, combined_train, tuning = FALSE, vector = NULL)
+```
+
+### ML 2: Random Forest
+
+```{r eval=FALSE, include=FALSE}
+# Load random forest script
+source('../R/random_forest.R')
+# Function call
+randomforest_model <- random_forest(pp, combined, combined_train, tuning = F)
+```
+
+## Evaluation
+
+### Evaluation Linear Regression
+
+```{r}
+source('../R/evaluation.R')
+eval_model(lm_model, combined_train, combined_test)
+```
+
+### Evaluation ML 1: KNN
+
+```{r eval=FALSE, include=FALSE}
+source('../R/evaluation.R')
+eval_model(knn_model, combined_train, combined_test)
+```
+
+### Evaluation ML 2: Random Forest
+
+```{r eval=FALSE, include=FALSE}
+source('../R/evaluation.R')
+eval_model(randomforest_model, combined_train, combined_test)
+```
+
+## Spatial Upscaling
+
+### Meteorological Conditions
+
+Those parameter are optimized for this models. They can change if you change the model (e.g. change the hyperparameters in order to tune the model).
+
+```{r}
+meteo_data <- c(
+  temp = 9.4, rain = 0.3, rad = 0, winds = 1.1, windd = 145.5, pressure = 949.3, 
+  humidity = 99.2, mean_temp_6_hours = 9.6, mean_temp_12_hours = 9.6, mean_temp_1_day = 9.3, 
+  mean_temp_3_days = 12.5, mean_temp_5_days = 13.1, mean_pressure_6_hours = 948.6,
+  mean_pressure_1_day = 946.7, mean_pressure_3_days = 946.6, mean_winds_6_hours = 1.9,
+  mean_winds_12_hours = 2.9, mean_winds_1_day = 2.3, mean_winds_3_days = 2, 
+  mean_winds_5_days = 1.6, mean_windd_6_hours = 150.7, mean_windd_3_days = 188.4,
+  mean_rad_6_hours = 9.4, mean_rad_12_hours = 100.9, mean_rad_1_day = 82.7, 
+  mean_rad_3_days = 136.7, mean_rad_5_days = 167.1, mean_humidity_6_hours = 95.5,
+  mean_humidity_12_hours = 94.4, mean_humidity_1_day = 95.3, mean_humidity_3_days = 88.5,
+  mean_humidity_5_days = 87.4, sum_precipitation_12_hours = 7.3, 
+  sum_precipitation_3_days = 25.4, sum_precipitation_5_days = 41.4, 
+  sum_precipitation_10_days = 56)
+```
+
+### Spatial Upscale Using Linear Regression
+
+```{r}
+# Call the function
+source('../R/map_generator.R')
+# Function call
+spatial_upscale <- map_generator_leaflet(meteo_data, lm_model)
+```
+
+### Spatial Upscale Using KNN
+
+```{r eval=FALSE, include=FALSE}
+# Call the function
+source('../R/map_generator.R')
+# Function call
+spatial_upscale <- map_generator(meteo_data, knn_model)
+```
+
+### Spatial Upscale Using Random Forest
+
+```{r eval=FALSE, include=FALSE}
+# Call the function
+source('../R/map_generator.R')
+# Function call
+spatial_upscale <- map_generator(meteo_data, randomforest_model)
+```
+
+## Shiny
+
+```{r}
+# Install required packages if not already installed
+# install.packages("shiny")
+
+library(shiny)
+
+# Assuming 'model' is your trained random forest model
+# Replace this with your actual model fitting code
+# model <- randomForest(target_variable ~ ., data = your_data)
+
+# List of input variables
+input_vars <- c(
+  "temp","rain", "rad", "winds", "windd", "mean_temp_6_hours", "mean_temp_12_hours",
+  "mean_temp_1_day", "mean_temp_3_days", "mean_temp_5_days",
+  "sum_precipitation_6_hours", "sum_precipitation_12_hours",
+  "sum_precipitation_1_day", "sum_precipitation_3_days", "sum_precipitation_5_days")
+
+# UI portion of the Shiny app
+ui <- fluidPage(
+  titlePanel("Random Forest Predictor"),
+  sidebarLayout(
+    sidebarPanel(
+      lapply(input_vars, function(var) {
+        sliderInput(var, var, min = 0, max = 1000, value = 0)
+      }),
+      actionButton("predictButton", "Predict")
+    ),
+    mainPanel(
+      plotOutput("predictionPlot")
+    )
+  )
+)
+
+# Server logic
+server <- function(input, output) {
+
+  observeEvent(input$predictButton, {
+
+
+  output$predictionPlot <- renderPlot({
+
+    # Create a data frame with the input values
+    meteoswiss <- data.frame(sapply(input_vars, function(var) input[[var]]))
+
+
+    tiffs<-tiffs_only
+
+
+    for (name_var in rownames(meteoswiss)) {
+      temp <- terra::rast(ncol= , nrow=247, xmin=2592670, xmax=2607320, ymin=1193202, ymax=1205552,names = name_var)
+      terra::values(temp) <- meteoswiss[name_var,1]
+
+      temp <- crop(temp,tiffs)
+      temp <- resample(temp,tiffs)
+      tiffs <- c(tiffs,temp)
+
+
+    }
+
+    temperature <- terra::predict(tiffs,random_forest_model,na.rm = T)
+
+
+    #extent <- rgdal::readOGR("../data/Map/Extent_Bern.shp")
+    #rivers <- rgdal::readOGR("../data/Map/Aare.shp")
+    color = colorRampPalette(c("blue", "white", "red"))(20)
+    terra::plot(temperature,color = color)
+    #sp::plot(extent, add = T)
+    #sp::plot(rivers, add = T)
+    #points( 2601930.3,1204410.1 , pch = 16, cex = 1)
+
+
+    # Predict using the random forest model
+    # prediction <- predict(model, newdata = new_data)
+
+    # Plot the prediction
+    # plot(prediction, main = "Predicted Output", xlab = "Input Parameters", ylab = "Predicted Value")
+  })
+  })
+}
+
+# Run the application
+
+
+
+```
+
+# Bibliography
