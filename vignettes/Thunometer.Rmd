@@ -26,7 +26,7 @@ To avoid misunderstanding we want to start with a brief clarification: This proj
 Temperature data for the years 2019-2022 from the network of the city of Bern is used. This is a numerical data set of the 3m temperature in 104 locations, with a temporal resolution of 10 minutes for all LCDs. How many LCD are active depends on the year but 55 LCDs are active over the entire time period (see table 1). The network data is publicly available on BORIS, however since data on BORIS is faulty at the moment we uploaded the corrected .csv-files to the Github repository. The original files can be found [here](https://boris.unibe.ch/161882/), as well as the metadata containing the logger location. We use additional data from the MeteoSchweiz AWS at Zollikofen, as it is the official meteorologic station of Bern. The five meteorological variables (2m temperature, precipitation, radiation, wind direction and wind speed) with a temporal resolution of 10 minutes for the years 2019-2022 will be used as well as the timestamp. Data of temperature (average) and precipitation (sum) of the previous six and twelve hours, and one, three and five days (and additionally ten days for precipitation) will also be fed into the model. This data is uploaded to the repository to ensure availability since the IDAWEB-data service is open for scientific use but not completely open access. To show small scale urban patterns of temperature distributions, zonally meaned geospatial data as shown in [\@burger2021](mailto:in@burger2021){.email} is used. These are cantonal land use classes as well as federal geospatial data. All of the data is spatially averaged to obtain the layers most effective as shown in @burger2021 as well as with our own distances (Table 1). The federal data (meteorologic values from the AWS at Zollikofen, digital elevation model (DEM), and vegetation height (VH)) and cantonal data (all land cover classes: land cover (LC), different open spaces (OS) and building heights (BH)) is directly downloaded from the web into R and then used as predictor classes. The geospatial layers roughness (ROU), flow accumulation (FLAC), aspect (ASP) and slop (SLO) are calculated based on these data sets and are then used as predictor classes. Table 1 provides a brief overview of the data we use.
 
 | Predictor class                                                                          | Variable Type    | Resolution / zonal mean [used resolutions / zonal means]          |
-|-------------------------------|------------------|------------------------|
+|------------------------------|------------------|------------------------|
 | 2m Temperature [°C], for the time period 15th May 2024 - 2th July 2024 (at Thun)         | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
 | Precipitation [mm], for the time period 15th May 2024 - 2th July 2024 (at Thun)          | Meteorological   | 15 minutes / [1h mean, 6, 12, 24, 72, 120, 240 hours rolling sum] |
 | Radiation [$W*m^{-2}$], for the time period 15th May 2024 - 2th July 2024 (at Thun)      | Meteorological   | 10 minutes / [1h mean, 6, 12, 24, 72, 120 hours rolling mean]     |
@@ -74,7 +74,7 @@ Either the geospatial layers are downloaded directly from a remote repository (d
 After processing the geospatial layers, a variable selection was performed (see [variable selection](Markdown::%20Variable_Selection.rmd)). This process was only exclusively applied to the predictors listed in table 1, as layers by @burger2021 were already reduced and selected. The variable selection using the Boruta-algorithm revealed that, after removing variables for reasons unrelated to relevance (see table 2), all remaining variables proved to be relevant. While further variable selection was investigated, no definitive conclusions were reached. Therefore, all generated predictors are utilized. Table 2 provides a brief overview of why certain variables were rejected. Based on this selection, a formula is now generated, which is processed into a recipe. This is now the basis for creating the models.
 
 |                                       |                                                                                                                                                                              |
-|-------------------|-----------------------------------------------------|
+|--------------------|----------------------------------------------------|
 | **Variable which is not a predictor** | **Reason**                                                                                                                                                                   |
 | Log_Nr and name                       | Does not make sens for spatial upscaling                                                                                                                                     |
 | temperature                           | It is the target variable                                                                                                                                                    |
@@ -126,7 +126,7 @@ First, we download the logger data of Thun
 folder_path <- '../data/Thun/'
 
 if((length(list.files(folder_path)) == 0)){
-  source('../R/logger_data/Logger_Data.R')
+  source('../R/Logger_Data.R')
   Logger_data(city = 'thun', date_start = '2024-05-15', date_end = '2024-07-02', 
             write_csv = T, interpolate = 0, type = "temperature")
   logger_data <- read_csv('../data/Thun/Logger_data_T_2024-05-15_2024-07-02.csv',
@@ -139,7 +139,7 @@ if((length(list.files(folder_path)) == 0)){
 
 ```{r}
 # Read Meteo Schweiz data from thun using IDAWEB order
-meteo_schweiz <- read_csv2('../data/Meteo_Schweiz/order_123870_data.txt', show_col_types = F)
+meteo_schweiz <- read_csv2('../data/meteoschweiz_thun.txt', show_col_types = F)
 ```
 
 ### Generate Geospatial Layers
